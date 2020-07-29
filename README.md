@@ -1,5 +1,5 @@
 # Disaster Response Pipeline Project
-![Intro Pic](screenshots/intro.png)
+![Intro Pic](intro.png)
 
 ### Table of Contents
 
