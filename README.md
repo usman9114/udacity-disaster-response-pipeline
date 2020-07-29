@@ -38,6 +38,17 @@
 
 `run.py`: A Flask Web App that visualizes the results
 
-### Licensing, Authors, Acknowledgements<a name="licensing"></a>
+<a name="authors"></a>
+## Authors
 
-Must give credit to Figure Eight for the data.# udacity-disaster-response-pipeline
+* [Usman Qureshi](https://github.com/usman9114)
+
+<a name="license"></a>
+## License
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+<a name="acknowledgement"></a>
+## Acknowledgements
+
+* [Udacity](https://www.udacity.com/) for providing such a complete Data Science Nanodegree Program
+* [Figure Eight](https://www.figure-eight.com/) for providing messages dataset to train my model
