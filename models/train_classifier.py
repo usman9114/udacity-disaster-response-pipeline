@@ -1,101 +1,79 @@
 """
-Classifier Trainer
-Project: Disaster Response Pipeline (Udacity - Data Science Nanodegree)
+TRAIN CLASSIFIER
+Disaster Resoponse Project
+Udacity - Data Science Nanodegree
 
-Sample Script Syntax:
-> python train_classifier.py <path to sqllite  destination db> <path to the pickle file>
-
-Sample Script Execution:
-> python train_classifier.py ../data/disaster_response_db.db classifier.pkl
+How to run this script (Example)
+> python train_classifier.py ../data/DisasterResponse.db classifier.pkl
 
 Arguments:
-    1) Path to SQLite destination database (e.g. disaster_response_db.db)
-    2) Path to pickle file name where ML model needs to be saved (e.g. classifier.pkl)
+    1) SQLite db path (containing pre-processed data)
+    2) pickle file name to save ML model
 """
 
 # import libraries
-
-
-# import libraries
-import numpy as np
-import pandas as pd
-pd.set_option('display.max_columns', 500)
-
 import sys
-import os
-import re
-from sqlalchemy import create_engine
+import pandas as pd
+import numpy as np
 import pickle
-
-from scipy.stats import gmean
-from sklearn.pipeline import Pipeline, FeatureUnion
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import fbeta_score, make_scorer
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier, AdaBoostClassifier
-from sklearn.model_selection import GridSearchCV
-from sklearn.feature_extraction.text import TfidfTransformer, CountVectorizer
-from sklearn.multioutput import MultiOutputClassifier
-from sklearn.base import BaseEstimator,TransformerMixin
-
+from sqlalchemy import create_engine
+import re
 import nltk
-nltk.download('punkt')
-nltk.download('wordnet')
-nltk.download('averaged_perceptron_tagger')
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.model_selection import train_test_split
+from sklearn.multioutput import MultiOutputClassifier
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+from sklearn.pipeline import Pipeline, FeatureUnion
+from sklearn.metrics import fbeta_score, classification_report
+from scipy.stats.mstats import gmean
 
-def load_data_from_db(database_filepath):
+nltk.download(['punkt', 'wordnet', 'averaged_perceptron_tagger'])
+
+
+def load_data(database_filepath):
     """
-    Load Data from the Database Function
+    Load Data Function
     
     Arguments:
-        database_filepath -> Path to SQLite destination database (e.g. disaster_response_db.db)
+        database_filepath -> path to SQLite db
     Output:
-        X -> a dataframe containing features
-        Y -> a dataframe containing labels
-        category_names -> List of categories name
+        X -> feature DataFrame
+        Y -> label DataFrame
+        category_names -> used for data visualization (app)
     """
-    
-    engine = create_engine('sqlite:///' + database_filepath)
-    table_name = os.path.basename(database_filepath).replace(".db","") + "_table"
-    df = pd.read_sql_table(table_name,engine)
-    
-    df = df.drop(['child_alone'], axis=1)
-    df['related'] =df['related'].map(lambda x: 1 if x == 2 else x)
-    
+    engine = create_engine('sqlite:///'+database_filepath)
+    df = pd.read_sql_table('DisasterDataTable',engine)
     X = df['message']
-    y = df.iloc[:, 4:]
-    
-    #print(X)
-    #print(y.columns)
-    category_names = y.columns # This will be used for visualization purpose
-    return X, y, category_names
+    Y = df.iloc[:,4:]
+    category_names = Y.columns
+    return X, Y, category_names
 
 
-def tokenize(text, url_place_holder_string="urlplaceholder"):
+def tokenize(text):
     """
-    Tokenize the text function
+    Tokenize function
     
     Arguments:
-        text -> Text message which needs to be tokenized
+        text -> list of text messages (english)
     Output:
-        clean_tokens -> List of tokens extracted from the provided text
+        clean_tokens -> tokenized text, clean for ML modeling
     """
-    
-    # Replace all urls with a urlplaceholder string
     url_regex = 'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
-    
-    # Extract all the urls from the provided text 
     detected_urls = re.findall(url_regex, text)
-    
-    # Replace url with a url placeholder string
-    for detected_url in detected_urls:
-        text = text.replace(detected_url, url_place_holder_string)
+    for url in detected_urls:
+        text = text.replace(url, "urlplaceholder")
 
-    tokens = nltk.word_tokenize(text)
-    lemmatizer = nltk.WordNetLemmatizer()
+    tokens = word_tokenize(text)
+    lemmatizer = WordNetLemmatizer()
 
-    clean_tokens = [lemmatizer.lemmatize(w).lower().strip() for w in tokens]
+    clean_tokens = []
+    for tok in tokens:
+        clean_tok = lemmatizer.lemmatize(tok).lower().strip()
+        clean_tokens.append(clean_tok)
+
     return clean_tokens
 
 class StartingVerbExtractor(BaseEstimator, TransformerMixin):
@@ -119,32 +97,32 @@ class StartingVerbExtractor(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
-        X_tagged_transformed = pd.Series(X).apply(self.starting_verb)
-        return pd.DataFrame(X_tagged_transformed)
+        X_tagged = pd.Series(X).apply(self.starting_verb)
+        return pd.DataFrame(X_tagged)
 
-def build_pipeline():
+def build_model():
     """
-    Build Pipeline function
+    Build Model function
     
-    Output:
-        A Scikit ML Pipeline that process text messages and apply a classifier.
-        
+    This function output is a Scikit ML Pipeline that process text messages
+    according to NLP best-practice and apply a classifier.
+
     """
-    pipeline = Pipeline([
+    model = Pipeline([
         ('features', FeatureUnion([
 
             ('text_pipeline', Pipeline([
-                ('count_vectorizer', CountVectorizer(tokenizer=tokenize)),
-                ('tfidf_transformer', TfidfTransformer())
+                ('vect', CountVectorizer(tokenizer=tokenize)),
+                ('tfidf', TfidfTransformer())
             ])),
 
-            ('starting_verb_transformer', StartingVerbExtractor())
+            ('starting_verb', StartingVerbExtractor())
         ])),
 
-        ('classifier', MultiOutputClassifier(AdaBoostClassifier()))
+        ('clf', MultiOutputClassifier(AdaBoostClassifier()))
     ])
 
-    return pipeline
+    return model
 
 def multioutput_fscore(y_true,y_pred,beta=1):
     """
@@ -162,72 +140,74 @@ def multioutput_fscore(y_true,y_pred,beta=1):
         scorer = make_scorer(multioutput_fscore,beta=1)
         
     Arguments:
-        y_true -> List of labels
-        y_prod -> List of predictions
-        beta -> Beta value to be used to calculate fscore metric
+        y_true -> labels
+        y_prod -> predictions
+        beta -> beta value of fscore metric
     
     Output:
-        f1score -> Calculation geometric mean of fscore
+        f1score -> customized fscore
     """
-    
-    # If provided y predictions is a dataframe then extract the values from that
+    score_list = []
     if isinstance(y_pred, pd.DataFrame) == True:
         y_pred = y_pred.values
-    
-    # If provided y actuals is a dataframe then extract the values from that
     if isinstance(y_true, pd.DataFrame) == True:
         y_true = y_true.values
-    
-    f1score_list = []
     for column in range(0,y_true.shape[1]):
         score = fbeta_score(y_true[:,column],y_pred[:,column],beta,average='weighted')
-        f1score_list.append(score)
-        
-    f1score = np.asarray(f1score_list)
-    f1score = f1score[f1score<1]
-    #gettigng f1 score (harmonic mean of precesion and recall)
-    f1score = gmean(f1score)
-    return f1score
+        score_list.append(score)
+    f1score_numpy = np.asarray(score_list)
+    f1score_numpy = f1score_numpy[f1score_numpy<1]
+    f1score = gmean(f1score_numpy)
+    return  f1score
 
-def evaluate_pipeline(pipeline, X_test, Y_test, category_names):
+def evaluate_model(model, X_test, Y_test, category_names):
     """
     Evaluate Model function
     
-    This function applies a ML pipeline to a test set and prints out the model performance (accuracy and f1score)
+    This function applies ML pipeline to a test set and prints out
+    model performance (accuracy and f1score)
     
     Arguments:
-        pipeline -> A valid scikit ML Pipeline
-        X_test -> Test features
-        Y_test -> Test labels
+        model -> Scikit ML Pipeline
+        X_test -> test features
+        Y_test -> test labels
         category_names -> label names (multi-output)
     """
-    Y_pred = pipeline.predict(X_test)
+    Y_pred = model.predict(X_test)
     
     multi_f1 = multioutput_fscore(Y_test,Y_pred, beta = 1)
     overall_accuracy = (Y_pred == Y_test).mean().mean()
 
-    print('Average overall accuracy {0:.2f}%'.format(overall_accuracy*100))
-    print('F1 score (custom definition) {0:.2f}%'.format(multi_f1*100))
+    print('Average overall accuracy {0:.2f}% \n'.format(overall_accuracy*100))
+    print('F1 score (custom definition) {0:.2f}%\n'.format(multi_f1*100))
 
-    Y_pred = pd.DataFrame(Y_pred, columns = Y_test.columns)
+    # Print the whole classification report.
+    # Extremely long output
+    # Work In Progress: Save Output as Text file!
     
-    for column in Y_test.columns:
-        print('Model Performance with Category: {}'.format(column))
-        print(classification_report(Y_test[column],Y_pred[column]))
+    #Y_pred = pd.DataFrame(Y_pred, columns = Y_test.columns)
+    
+    #for column in Y_test.columns:
+    #    print('Model Performance with Category: {}'.format(column))
+    #    print(classification_report(Y_test[column],Y_pred[column]))
+    pass
 
 
-def save_model_as_pickle(pipeline, pickle_filepath):
+def save_model(model, model_filepath):
     """
-    Save Pipeline function
+    Save Model function
     
     This function saves trained model as Pickle file, to be loaded later.
     
     Arguments:
-        pipeline -> GridSearchCV or Scikit Pipelin object
-        pickle_filepath -> destination path to save .pkl file
+        model -> GridSearchCV or Scikit Pipelin object
+        model_filepath -> destination path to save .pkl file
     
     """
-    pickle.dump(pipeline, open(pickle_filepath, 'wb'))
+    filename = model_filepath
+    pickle.dump(model, open(filename, 'wb'))
+    pass
+
 
 def main():
     """
@@ -241,31 +221,31 @@ def main():
     
     """
     if len(sys.argv) == 3:
-        database_filepath, pickle_filepath = sys.argv[1:]
-        print('Loading data from {} ...'.format(database_filepath))
-        X, Y, category_names = load_data_from_db(database_filepath)
+        database_filepath, model_filepath = sys.argv[1:]
+        print('Loading data...\n    DATABASE: {}'.format(database_filepath))
+        X, Y, category_names = load_data(database_filepath)
         X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2)
         
-        print('Building the pipeline ...')
-        pipeline = build_pipeline()
+        print('Building model...')
+        model = build_model()
         
-        print('Training the pipeline ...')
-        pipeline.fit(X_train, Y_train)
+        print('Training model...')
+        model.fit(X_train, Y_train)
         
         print('Evaluating model...')
-        evaluate_pipeline(pipeline, X_test, Y_test, category_names)
+        evaluate_model(model, X_test, Y_test, category_names)
 
-        print('Saving pipeline to {} ...'.format(pickle_filepath))
-        save_model_as_pickle(pipeline, pickle_filepath)
+        print('Saving model...\n    MODEL: {}'.format(model_filepath))
+        save_model(model, model_filepath)
 
         print('Trained model saved!')
 
     else:
-         print("Please provide the arguments correctly: \nSample Script Execution:\n\
-> python train_classifier.py ../data/disaster_response_db.db classifier.pkl \n\
-Arguments Description: \n\
-1) Path to SQLite destination database (e.g. disaster_response_db.db)\n\
-2) Path to pickle file name where ML model needs to be saved (e.g. classifier.pkl")
+        print('Please provide the filepath of the disaster messages database '\
+              'as the first argument and the filepath of the pickle file to '\
+              'save the model to as the second argument. \n\nExample: python '\
+              'train_classifier.py ../data/DisasterResponse.db classifier.pkl')
+
 
 if __name__ == '__main__':
     main()
